@@ -1,3 +1,9 @@
 // Polite-Scraper entry point.
-// Stage 0 scaffold — later stages wire the pipeline in here.
-console.log('Polite-Scraper scaffold. See README.md for the target classification.');
+import { CATALOGUE_URL } from './config.js';
+import { fetchPage } from './http.js';
+
+// Stage 1: download the first catalogue page once and cache it.
+const CATALOGUE_PAGE_1_CACHE = 'cache/catalogue-page-1.html';
+
+const result = await fetchPage(CATALOGUE_URL, CATALOGUE_PAGE_1_CACHE);
+console.log(`fetched ${CATALOGUE_URL} → status ${result.status}, fromCache: ${result.fromCache}`);
