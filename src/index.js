@@ -1,9 +1,9 @@
 // Polite-Scraper entry point.
-import { CATALOGUE_URL } from './config.js';
-import { fetchPage } from './http.js';
+import { crawlCatalog } from './discover.js';
 
-// Stage 1: download the first catalogue page once and cache it.
-const CATALOGUE_PAGE_1_CACHE = 'cache/catalogue-page-1.html';
+// Stage 2: follow the catalogue's own "next" link through the first 3 pages
+// and collect every unique book link.
+const { pageUrls, bookUrls } = await crawlCatalog();
 
-const result = await fetchPage(CATALOGUE_URL, CATALOGUE_PAGE_1_CACHE);
-console.log(`fetched ${CATALOGUE_URL} → status ${result.status}, fromCache: ${result.fromCache}`);
+console.log(`catalogue pages crawled: ${pageUrls.length}`);
+console.log(`unique book links found: ${bookUrls.length}`);
