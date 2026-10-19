@@ -7,6 +7,7 @@ import { extractRawRecord, bookCachePath } from './extract.js';
 import { normalizeRecord } from './schema.js';
 import { storeRecords } from './store.js';
 import { createReporter } from './report.js';
+import { MAX_PAGES } from './config.js';
 
 // One made-up URL, used only on purpose (--demo-bad-url) to prove that a bad
 // page is logged and skipped instead of killing the run. Never tests failure
@@ -33,13 +34,13 @@ try {
   for (const productUrl of targets) {
     const sourcePage = sourcePageByBookUrl.get(productUrl) ?? pageUrls[0] ?? null;
     try {
-      const { html } = await fetchPage(productUrl, bookCachePath(productUrl));
+      const { html, fetchedAt } = await fetchPage(productUrl, bookCachePath(productUrl));
       const $ = cheerio.load(html);
       rawRecords.push(
         extractRawRecord($, {
           productUrl,
           sourcePage,
-          fetchedAt: new Date().toISOString(),
+          fetchedAt, // when the fact was actually retrieved — the provenance receipt
         }),
       );
     } catch (err) {
@@ -60,7 +61,13 @@ try {
     else invalid.push({ raw, reasons: result.reasons });
   }
 
-  const stored = storeRecords({ valid, invalid });
+  // Only replace books.json when the crawl covered the full scope — a failed
+  // run must never destroy the last good output.
+  const scopeComplete = pageUrls.length === MAX_PAGES;
+  const stored = storeRecords({ valid, invalid, scopeComplete });
+  if (!scopeComplete) {
+    console.error('incomplete catalogue crawl — kept the previous output/books.json');
+  }
   reporter.addValid(stored.valid);
   reporter.addInvalid(stored.invalid);
   console.log(`valid records: ${stored.valid}, invalid: ${stored.invalid}`);

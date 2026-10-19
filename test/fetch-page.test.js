@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import { mkdtempSync, readFileSync, existsSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, existsSync, rmSync, writeFileSync, utimesSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -88,4 +88,54 @@ test(`spaces real network requests at least ${DELAY_MS}ms apart`, async () => {
   const [t1, t2] = hitTimes.slice(before);
   assert.ok(t1 && t2, 'expected two network hits in this test');
   assert.ok(t2 - t1 >= DELAY_MS - 50, `requests only ${t2 - t1}ms apart`);
+});
+
+test('fetched_at provenance: a cache read returns the time the page was actually fetched', async () => {
+  const cachePath = join(cacheDir, 'provenance.html');
+  writeFileSync(cachePath, '<html>provenance</html>');
+  const fetchedWhen = new Date('2026-01-02T03:04:05.000Z');
+  utimesSync(cachePath, fetchedWhen, fetchedWhen);
+  // a cached page never leaves the computer — but its receipt must show the
+  // original fetch time, not the time of this read
+  const result = await fetchPage('http://127.0.0.1:1/never-requested', cachePath);
+  assert.equal(result.fetchedAt, fetchedWhen.toISOString());
+});
+
+test('fetched_at provenance: a network read returns the time the response was stored', async () => {
+  const cachePath = join(cacheDir, 'provenance-net.html');
+  const before = Date.now();
+  const result = await fetchPage(`${baseUrl}/page`, cachePath);
+  const after = Date.now();
+  const when = Date.parse(result.fetchedAt);
+  assert.ok(Number.isFinite(when), `fetchedAt must be ISO-parseable, got ${result.fetchedAt}`);
+  assert.ok(when >= before - 1000 && when <= after + 1000, 'fetchedAt must be the fetch time');
+});
+
+test('a stalled response body still gives up after the timeout — never waits forever', async () => {
+  const stalling = http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/html' });
+    res.write('<html><body>partial'); // never ends — slowloris style
+  });
+  await new Promise((resolve) => stalling.listen(0, '127.0.0.1', resolve));
+  const base = `http://127.0.0.1:${stalling.address().port}`;
+  try {
+    const guarded = Promise.race([
+      fetchPage(`${base}/stall`, join(cacheDir, 'stall.html'), { timeoutMs: 250 }),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('HUNG: body read never gave up')), 4000),
+      ),
+    ]);
+    await assert.rejects(
+      () => guarded,
+      (err) => {
+        assert.ok(err instanceof FetchError, `expected FetchError, got ${err}`);
+        assert.equal(err.status, null, 'body timeout is a network-level failure');
+        return true;
+      },
+    );
+    assert.equal(existsSync(join(cacheDir, 'stall.html')), false, 'no cache for a failed fetch');
+  } finally {
+    stalling.closeAllConnections?.();
+    stalling.close();
+  }
 });

@@ -1,7 +1,8 @@
-// Polite HTTP layer: cache-first reads, honest user-agent, timeout, status
-// check, a minimum gap between real network requests, and exactly one retry
-// for timeouts and 5xx — never for 404/403.
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+// Polite HTTP layer: cache-first reads, honest user-agent, timeout that covers
+// the whole response (headers *and* body), status check, a minimum gap between
+// real network requests, and exactly one retry for timeouts and 5xx — never
+// for 404/403.
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 
 import {
@@ -49,13 +50,20 @@ export function resetHttpStats() {
 
 /**
  * Fetch a page, reading from cache when possible.
- * Returns { html, fromCache, status }.
+ * Returns { html, fromCache, status, fetchedAt } where fetchedAt is when the
+ * fact was actually retrieved from the site (cache-file mtime for cached
+ * reads, response time for network reads) — the provenance receipt.
  * Throws FetchError on any status other than 200 after the allowed attempts.
  */
-export async function fetchPage(url, cachePath) {
+export async function fetchPage(url, cachePath, { timeoutMs = TIMEOUT_MS } = {}) {
   if (existsSync(cachePath)) {
     stats.cache += 1;
-    return { html: readFileSync(cachePath, 'utf8'), fromCache: true, status: 200 };
+    return {
+      html: readFileSync(cachePath, 'utf8'),
+      fromCache: true,
+      status: 200,
+      fetchedAt: statSync(cachePath).mtime.toISOString(),
+    };
   }
 
   for (let attempt = 1; ; attempt += 1) {
@@ -63,39 +71,49 @@ export async function fetchPage(url, cachePath) {
     const sinceLast = Date.now() - lastNetworkAt;
     if (sinceLast < DELAY_MS) await sleep(DELAY_MS - sinceLast);
 
+    // The timer covers headers AND body read — a request gives up after
+    // timeoutMs even if the server stalls mid-response. Never wait forever.
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-    let res;
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    let status;
     try {
-      res = await fetch(url, {
+      const res = await fetch(url, {
         headers: { 'User-Agent': USER_AGENT },
         signal: controller.signal,
       });
+      status = res.status;
+      if (status === 200) {
+        const html = await res.text();
+        lastNetworkAt = Date.now();
+        stats.network += 1;
+        mkdirSync(dirname(cachePath), { recursive: true });
+        writeFileSync(cachePath, html);
+        clearTimeout(timer);
+        return {
+          html,
+          fromCache: false,
+          status: 200,
+          fetchedAt: statSync(cachePath).mtime.toISOString(),
+        };
+      }
     } catch (err) {
+      // Network-level failure: DNS, connection, or a timed-out headers/body read.
       lastNetworkAt = Date.now();
-      const failure = new FetchError(`request failed for ${url}: ${err.message}`, null);
+      clearTimeout(timer);
       if (shouldRetry(null, attempt)) {
         await sleep(RETRY_PAUSE_MS);
         continue;
       }
-      throw failure;
-    } finally {
-      clearTimeout(timer);
+      throw new FetchError(`request failed for ${url}: ${err.message}`, null);
     }
+    clearTimeout(timer);
+
+    // A status other than 200: a failed fetch, not HTML to parse.
     lastNetworkAt = Date.now();
-
-    if (res.status !== 200) {
-      if (shouldRetry(res.status, attempt)) {
-        await sleep(RETRY_PAUSE_MS);
-        continue;
-      }
-      throw new FetchError(`HTTP ${res.status} for ${url}`, res.status);
+    if (shouldRetry(status, attempt)) {
+      await sleep(RETRY_PAUSE_MS);
+      continue;
     }
-
-    const html = await res.text();
-    stats.network += 1;
-    mkdirSync(dirname(cachePath), { recursive: true });
-    writeFileSync(cachePath, html);
-    return { html, fromCache: false, status: 200 };
+    throw new FetchError(`HTTP ${status} for ${url}`, status);
   }
 }

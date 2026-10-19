@@ -71,6 +71,31 @@ test('storeRecords dedupes by product_url and re-running replaces instead of app
   }
 });
 
+test('storeRecords keeps the previous books.json when the run did not cover the full scope', () => {
+  const outDir = tmpOut();
+  try {
+    const good = [{ ...RAW_GOOD, price_gbp: 51.77 }];
+    storeRecords({ valid: good, invalid: [], outDir, scopeComplete: true });
+    const before = readFileSync(join(outDir, 'books.json'), 'utf8');
+
+    // A later run with broken discovery (e.g. catalogue page 1 failed) must not
+    // clobber the last good output — re-running a failed job has to be safe.
+    const result = storeRecords({
+      valid: [],
+      invalid: [{ raw: { ...RAW_GOOD, price_text: 'cheap' }, reasons: ['price_gbp: bad'] }],
+      outDir,
+      scopeComplete: false,
+    });
+    const after = readFileSync(join(outDir, 'books.json'), 'utf8');
+    assert.equal(after, before, 'previous good books.json must be preserved');
+    assert.equal(result.replacedBooks, false, 'report needs to know books were not replaced');
+    const errors = JSON.parse(readFileSync(join(outDir, 'errors.json'), 'utf8'));
+    assert.equal(errors.length, 1, 'errors.json still reflects this run');
+  } finally {
+    rmSync(outDir, { recursive: true, force: true });
+  }
+});
+
 test('storeRecords routes invalid records to errors.json with their reasons, never to books.json', () => {
   const outDir = tmpOut();
   try {

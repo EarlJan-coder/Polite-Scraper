@@ -70,7 +70,7 @@ Use an official API when one exists — it is faster, stabler, and the publisher
 
 ## Run report
 
-Pasted verbatim from `output/run-report.json` after the final verification run — this is the first full run, which fetched the 59 book pages it did not already hold (a re-run shows `pages_fetched: 0`, `cache_hits: 63`):
+Pasted verbatim from the first full run's `output/run-report.json`, saved before the final all-cache re-run. The committed `output/run-report.json` is that final re-run (`pages_fetched: 0`, `cache_hits: 63` — every page served from cache). The 4 cache hits in this first run are the 3 catalogue pages plus 1 book page cached while building the stages; the run fetched the other 59 book pages live:
 
 ```json
 {
