@@ -105,6 +105,30 @@ test('crawlCatalog stops at maxPages even when a next link exists', async () => 
   }
 });
 
+test('crawlCatalog reports a broken catalogue page to the reporter and stops instead of crashing', async () => {
+  let failures = 0;
+  const reporter = {
+    failedPage() {
+      failures += 1;
+    },
+  };
+  const dir = mkdtempSync(join(tmpdir(), 'polite-scraper-crawlfail-'));
+  try {
+    // nothing listens on port 1 → connection refused → retries once → gives up
+    const { pageUrls, bookUrls } = await crawlCatalog({
+      startUrl: 'http://127.0.0.1:1/catalogue/page-1.html',
+      maxPages: 3,
+      cacheDir: dir,
+      reporter,
+    });
+    assert.deepEqual(pageUrls, [], 'no pages were obtained');
+    assert.deepEqual(bookUrls, []);
+    assert.equal(failures, 1, 'the broken page is counted once');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('crawlCatalog stops when the catalogue itself says there is no next page', async () => {
   const dir = seedCache({
     'catalogue-page-1.html': SYNTHETIC['catalogue-page-1.html'],

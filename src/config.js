@@ -6,3 +6,5 @@ export const USER_AGENT = 'FlyRankInternship-A9/1.0 (+https://github.com/EarlJan
 export const TIMEOUT_MS = 10_000; // a request gives up after 10 seconds
 export const DELAY_MS = 500; // at least half a second between real requests
 export const MAX_PAGES = 3; // first 3 catalogue pages only
+export const MAX_ATTEMPTS = 2; // one try + at most one retry
+export const RETRY_PAUSE_MS = 1000; // wait a moment before the single retry

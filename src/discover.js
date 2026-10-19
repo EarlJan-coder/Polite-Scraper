@@ -30,6 +30,7 @@ export async function crawlCatalog({
   startUrl = CATALOGUE_URL,
   maxPages = MAX_PAGES,
   cacheDir = 'cache',
+  reporter = null,
 } = {}) {
   const pageUrls = [];
   const bookUrls = new Set();
@@ -39,7 +40,15 @@ export async function crawlCatalog({
   while (nextUrl && pageUrls.length < maxPages) {
     const pageUrl = nextUrl;
     const cachePath = join(cacheDir, `catalogue-page-${pageUrls.length + 1}.html`);
-    const { html } = await fetchPage(pageUrl, cachePath);
+    let html;
+    try {
+      ({ html } = await fetchPage(pageUrl, cachePath));
+    } catch (err) {
+      // One broken catalogue page is logged and skipped — it must not kill the run.
+      console.error(`catalogue page failed: ${pageUrl} — ${err.message}`);
+      reporter?.failedPage();
+      break; // without this page we cannot follow its next link
+    }
     const $ = cheerio.load(html);
 
     pageUrls.push(pageUrl);
