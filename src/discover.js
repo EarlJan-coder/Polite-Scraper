@@ -23,7 +23,8 @@ export function findNextPage($, pageUrl) {
  * Crawl up to maxPages catalogue pages starting at startUrl.
  * Follows the site's own next links (no hardcoded page URLs), deduplicates
  * book links, and caches every page under cacheDir.
- * Returns { pageUrls: string[], bookUrls: string[] }.
+ * Returns { pageUrls, bookUrls, sourcePageByBookUrl } — the map records which
+ * catalogue page each book was first discovered on (provenance for records).
  */
 export async function crawlCatalog({
   startUrl = CATALOGUE_URL,
@@ -32,6 +33,7 @@ export async function crawlCatalog({
 } = {}) {
   const pageUrls = [];
   const bookUrls = new Set();
+  const sourcePageByBookUrl = new Map();
   let nextUrl = startUrl;
 
   while (nextUrl && pageUrls.length < maxPages) {
@@ -41,9 +43,12 @@ export async function crawlCatalog({
     const $ = cheerio.load(html);
 
     pageUrls.push(pageUrl);
-    for (const link of extractBookLinks($, pageUrl)) bookUrls.add(link);
+    for (const link of extractBookLinks($, pageUrl)) {
+      if (!sourcePageByBookUrl.has(link)) sourcePageByBookUrl.set(link, pageUrl);
+      bookUrls.add(link);
+    }
     nextUrl = findNextPage($, pageUrl);
   }
 
-  return { pageUrls, bookUrls: [...bookUrls] };
+  return { pageUrls, bookUrls: [...bookUrls], sourcePageByBookUrl };
 }

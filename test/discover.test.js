@@ -72,13 +72,22 @@ test('crawlCatalog stops at maxPages even when a next link exists', async () => 
   const { 'catalogue-page-4.html': _notSeeded, ...firstThree } = SYNTHETIC;
   const dir = seedCache(firstThree);
   try {
-    const { pageUrls, bookUrls } = await crawlCatalog({
+    const { pageUrls, bookUrls, sourcePageByBookUrl } = await crawlCatalog({
       startUrl: 'https://fake.test/catalogue/page-1.html',
       maxPages: 3,
       cacheDir: dir,
     });
     assert.equal(pageUrls.length, 3, 'exactly 3 pages crawled');
     assert.equal(pageUrls[0], 'https://fake.test/catalogue/page-1.html');
+    // provenance: each book knows which catalogue page it was discovered on
+    assert.equal(
+      sourcePageByBookUrl.get('https://fake.test/book/alpha_1/index.html'),
+      'https://fake.test/catalogue/page-1.html',
+    );
+    assert.equal(
+      sourcePageByBookUrl.get('https://fake.test/book/delta_4/index.html'),
+      'https://fake.test/catalogue/page-3.html',
+    );
     assert.ok(!existsSync(join(dir, 'catalogue-page-4.html')), 'page 4 must never be fetched');
     // duplicate beta_2 across pages 1 and 2 counts once
     assert.deepEqual(
