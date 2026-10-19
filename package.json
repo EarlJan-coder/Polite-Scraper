@@ -1,0 +1,12 @@
+{
+  "name": "polite-scraper",
+  "version": "1.0.0",
+  "description": "A polite, cache-first scraper for books.toscrape.com (scraping sandbox).",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test test/"
+  },
+  "license": "MIT"
+}
